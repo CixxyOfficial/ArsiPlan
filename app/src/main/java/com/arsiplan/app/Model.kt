@@ -7,8 +7,8 @@ import org.json.JSONObject
 import kotlin.math.*
 
 enum class Tool(val label: String) {
-    PAN("✋ Geser/Zoom"), SELECT("👆 Pilih/Pindah"), WALL("▬ Dinding"), DOOR("🚪 Pintu"),
-    WINDOW("▭ Jendela"), ROOM("⬜ Ruang"), FURN("🛏 Furnitur"), DIM("↔ Dimensi"), TEXT("T Teks")
+    PAN("Kamera"), SELECT("Pilih"), WALL("Dinding"), DOOR("Pintu"), WINDOW("Jendela"),
+    ROOM("Ruang"), FURN("Furnitur"), DIM("Ukur"), TEXT("Teks")
 }
 
 enum class Kind(val label: String) {
@@ -58,8 +58,18 @@ class PlanState {
     fun toScreen(p: Offset) = p * scale() + pan
     fun toWorld(o: Offset) = (o - pan) / scale()
 
-    fun snapPt(p: Offset): Offset =
-        if (!snap) p else Offset((p.x / 0.1f).roundToInt() * 0.1f, (p.y / 0.1f).roundToInt() * 0.1f)
+    fun snapPt(p: Offset): Offset {
+        if (!snap) return p
+        val near = els.filter { it.kind == Kind.WALL }.flatMap { listOf(it.a, it.b) }
+            .minByOrNull { (it - p).getDistance() }
+        if (near != null && (near - p).getDistance() < 12f / scale()) return near
+        return Offset((p.x / 0.1f).roundToInt() * 0.1f, (p.y / 0.1f).roundToInt() * 0.1f)
+    }
+
+    fun zoomAt(f: Float, c: Offset) {
+        val ns = (zoom * f).coerceIn(0.3f, 5f); val k = ns / zoom
+        pan = c - (c - pan) * k; zoom = ns
+    }
 
     fun constrain(s: Offset, p: Offset, k: Kind): Offset {
         if (!snap || k == Kind.ROOM || k == Kind.FURN) return p
@@ -96,7 +106,7 @@ class PlanState {
         if (e.kind == Kind.DOOR) lbl = "P" + (els.count { it.kind == Kind.DOOR } + 1)
         if (e.kind == Kind.WINDOW) lbl = "J" + (els.count { it.kind == Kind.WINDOW } + 1)
         val id = nid++
-        els.add(e.copy(id = id, label = lbl)); sel = id
+        els.add(e.copy(id = id, label = lbl)); sel = if (e.kind == Kind.ROOM) id else null
     }
 
     fun addText(p: Offset, t: String) {

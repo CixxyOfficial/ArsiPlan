@@ -7,23 +7,30 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
@@ -31,6 +38,7 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.*
@@ -42,9 +50,24 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private val Accent = Color(0xFFE65100)
+private val AccentBg = Color(0xFFFFE0B2)
+
 private fun kindOf(t: Tool): Kind? = when (t) {
     Tool.WALL -> Kind.WALL; Tool.DOOR -> Kind.DOOR; Tool.WINDOW -> Kind.WINDOW
     Tool.ROOM -> Kind.ROOM; Tool.FURN -> Kind.FURN; Tool.DIM -> Kind.DIM; else -> null
+}
+
+@Composable
+fun IconBtn(icon: ImageVector, desc: String, tint: Color = Color(0xFF37474F), onClick: () -> Unit) {
+    IconButton(onClick, Modifier.size(40.dp)) { Icon(icon, desc, Modifier.size(22.dp), tint = tint) }
+}
+
+private fun hint(t: Tool) = when (t) {
+    Tool.PAN -> "Mode kamera: geser dan cubit untuk zoom"
+    Tool.SELECT -> "Ketuk untuk memilih, seret untuk memindah"
+    Tool.TEXT -> "Ketuk kanvas untuk menambah teks"
+    else -> t.label + ": seret untuk menggambar. Ketuk ikon lagi untuk mode kamera"
 }
 
 @Composable
@@ -52,40 +75,81 @@ fun App() {
     val st = remember { PlanState() }
     val ctx = LocalContext.current
     var showReport by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
     var textAt by remember { mutableStateOf<Offset?>(null) }
     var textVal by remember { mutableStateOf("") }
+    var center by remember { mutableStateOf(Offset(300f, 300f)) }
 
     Column(Modifier.fillMaxSize().background(Color(0xFFF5F5F5))) {
-        Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-            OutlinedTextField(st.title, { st.title = it }, singleLine = true, modifier = Modifier.width(170.dp), label = { Text("Judul proyek") })
-            TextButton({ st.undo() }) { Text("↶ Undo") }
-            TextButton({ st.redo() }) { Text("↷ Redo") }
-            FilterChip(st.snap, { st.snap = !st.snap }, label = { Text("Snap 10cm") })
-            TextButton({ showReport = true }) { Text("📋 Laporan") }
-            TextButton({
-                ctx.openFileOutput("denah.json", 0).use { it.write(st.toJson().toByteArray()) }
-                Toast.makeText(ctx, "Tersimpan", Toast.LENGTH_SHORT).show()
-            }) { Text("💾 Simpan") }
-            TextButton({
-                try { st.fromJson(ctx.openFileInput("denah.json").bufferedReader().readText()) }
-                catch (e: Exception) { Toast.makeText(ctx, "Belum ada file", Toast.LENGTH_SHORT).show() }
-            }) { Text("📂 Buka") }
-        }
-        Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp)) {
-            Tool.values().forEach { t ->
-                FilterChip(st.tool == t, { st.tool = t }, label = { Text(t.label) }, modifier = Modifier.padding(horizontal = 2.dp))
-            }
-        }
-        if (st.tool == Tool.FURN) {
-            Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp)) {
-                FURNITURE.forEach { f ->
-                    AssistChip({ st.furnType = f }, label = { Text(f) }, modifier = Modifier.padding(horizontal = 2.dp),
-                        colors = AssistChipDefaults.assistChipColors(containerColor = if (st.furnType == f) Color(0xFFFFCC80) else Color.Transparent))
+        // Bar atas
+        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            BasicTextField(st.title, { st.title = it }, singleLine = true, modifier = Modifier.weight(1f),
+                textStyle = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF263238)))
+            IconBtn(Ic.Undo, "Undo") { st.undo() }
+            IconBtn(Ic.Redo, "Redo") { st.redo() }
+            IconBtn(Ic.Grid, "Snap", if (st.snap) Accent else Color(0xFF90A4AE)) { st.snap = !st.snap }
+            Box {
+                IconBtn(Ic.Menu, "Menu") { menu = true }
+                DropdownMenu(menu, { menu = false }) {
+                    DropdownMenuItem({ Text("Laporan & keterangan") }, { menu = false; showReport = true },
+                        leadingIcon = { Icon(Ic.Report, null, Modifier.size(20.dp)) })
+                    DropdownMenuItem({ Text("Simpan proyek") }, {
+                        menu = false
+                        ctx.openFileOutput("denah.json", 0).use { it.write(st.toJson().toByteArray()) }
+                        Toast.makeText(ctx, "Tersimpan", Toast.LENGTH_SHORT).show()
+                    }, leadingIcon = { Icon(Ic.Save, null, Modifier.size(20.dp)) })
+                    DropdownMenuItem({ Text("Buka proyek") }, {
+                        menu = false
+                        try { st.fromJson(ctx.openFileInput("denah.json").bufferedReader().readText()) }
+                        catch (e: Exception) { Toast.makeText(ctx, "Belum ada file", Toast.LENGTH_SHORT).show() }
+                    }, leadingIcon = { Icon(Ic.Open, null, Modifier.size(20.dp)) })
                 }
             }
         }
-        PlanCanvas(st, { textAt = it; textVal = "" }, Modifier.weight(1f).fillMaxWidth())
+        // Kanvas + overlay
+        Box(Modifier.weight(1f).fillMaxWidth().onSizeChanged { center = Offset(it.width / 2f, it.height / 2f) }) {
+            PlanCanvas(st, { textAt = it; textVal = "" }, Modifier.fillMaxSize())
+            Surface(Modifier.align(Alignment.TopStart).padding(8.dp), shape = RoundedCornerShape(8.dp),
+                color = Color(0xE6FFFFFF), shadowElevation = 2.dp) {
+                Text(hint(st.tool), Modifier.padding(horizontal = 10.dp, vertical = 5.dp), fontSize = 11.sp, color = Color(0xFF455A64))
+            }
+            Surface(Modifier.align(Alignment.BottomEnd).padding(8.dp), shape = RoundedCornerShape(12.dp),
+                color = Color(0xE6FFFFFF), shadowElevation = 2.dp) {
+                Column {
+                    IconBtn(Ic.ZoomIn, "Perbesar") { st.zoomAt(1.25f, center) }
+                    IconBtn(Ic.ZoomOut, "Perkecil") { st.zoomAt(0.8f, center) }
+                    IconBtn(Ic.Home, "Reset tampilan") { st.zoom = 1f; st.pan = Offset(60f, 60f) }
+                }
+            }
+        }
+        if (st.tool == Tool.FURN) {
+            Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 2.dp)) {
+                FURNITURE.forEach { f ->
+                    FilterChip(st.furnType == f, { st.furnType = f }, label = { Text(f, fontSize = 12.sp) },
+                        modifier = Modifier.padding(horizontal = 2.dp))
+                }
+            }
+        }
         st.sel?.let { id -> st.els.firstOrNull { it.id == id }?.let { Panel(st, it) } }
+        // Toolbar bawah
+        Surface(tonalElevation = 3.dp, shadowElevation = 6.dp) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 4.dp)) {
+                Tool.values().forEach { t ->
+                    val on = st.tool == t
+                    Column(
+                        Modifier.weight(1f).padding(horizontal = 1.dp).clip(RoundedCornerShape(10.dp))
+                            .background(if (on) AccentBg else Color.Transparent)
+                            .clickable { st.tool = if (on && t != Tool.PAN) Tool.PAN else t; st.sel = null }
+                            .padding(vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(t.icon(), t.label, Modifier.size(22.dp), tint = if (on) Accent else Color(0xFF607D8B))
+                        Text(t.label, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Clip,
+                            color = if (on) Accent else Color(0xFF607D8B), fontWeight = if (on) FontWeight.Bold else FontWeight.Normal)
+                    }
+                }
+            }
+        }
     }
 
     if (showReport) {
@@ -111,28 +175,29 @@ fun App() {
 
 @Composable
 fun Panel(st: PlanState, e: El) {
-    Card(Modifier.fillMaxWidth().padding(6.dp)) {
-        Column(Modifier.padding(8.dp)) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 2.dp)) {
+        Column(Modifier.padding(start = 10.dp, end = 4.dp, bottom = 6.dp)) {
             val info = when (e.kind) {
-                Kind.ROOM -> " • %.2f × %.2f m = %.2f m²".format(e.w(), e.h(), e.area())
-                Kind.FURN -> " • %.2f × %.2f m".format(e.w(), e.h())
+                Kind.ROOM -> " | %.2f x %.2f m = %.2f m²".format(e.w(), e.h(), e.area())
+                Kind.FURN -> " | %.2f x %.2f m".format(e.w(), e.h())
                 Kind.TEXT -> ""
-                else -> " • %.2f m".format(e.len())
+                else -> " | %.2f m".format(e.len())
             }
-            Text(e.kind.label + info, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(e.kind.label + info, Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                IconBtn(Ic.Copy, "Duplikat") { st.duplicate(e.id) }
+                IconBtn(Ic.Trash, "Hapus", Color(0xFFD32F2F)) { st.delete(e.id) }
+                IconBtn(Ic.Close, "Tutup") { st.sel = null }
+            }
             OutlinedTextField(e.label, { v -> st.update(e.id) { it.copy(label = v) } },
-                label = { Text("Nama / label") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                label = { Text("Nama / label") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(end = 6.dp))
             if (e.kind != Kind.TEXT && e.kind != Kind.DIM)
-                OutlinedTextField(e.note, { v -> st.update(e.id) { it.copy(note = v) } },
-                    label = { Text("Keterangan (bahan, finishing, spesifikasi)") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(e.note, { v -> st.update(e.id) { it.copy(note = v) } }, maxLines = 2,
+                    label = { Text("Keterangan (bahan, finishing, spesifikasi)") },
+                    modifier = Modifier.fillMaxWidth().padding(end = 6.dp, top = 4.dp))
             if (e.kind == Kind.WALL) {
-                Text("Tebal dinding: ${(e.thick * 100).roundToInt()} cm")
-                Slider(e.thick, { v -> st.update(e.id) { it.copy(thick = v) } }, valueRange = 0.08f..0.4f)
-            }
-            Row {
-                TextButton({ st.duplicate(e.id) }) { Text("Duplikat") }
-                TextButton({ st.delete(e.id) }) { Text("Hapus", color = Color.Red) }
-                TextButton({ st.sel = null }) { Text("Tutup") }
+                Text("Tebal dinding: ${(e.thick * 100).roundToInt()} cm", fontSize = 12.sp)
+                Slider(e.thick, { v -> st.update(e.id) { it.copy(thick = v) } }, Modifier.padding(end = 6.dp), valueRange = 0.08f..0.4f)
             }
         }
     }
@@ -158,8 +223,7 @@ fun PlanCanvas(st: PlanState, onText: (Offset) -> Unit, modifier: Modifier) {
             .pointerInput(st.tool) {
                 if (st.tool == Tool.PAN) {
                     detectTransformGestures { c, pn, z, _ ->
-                        val ns = (st.zoom * z).coerceIn(0.3f, 5f); val k = ns / st.zoom
-                        st.pan = c - (c - st.pan) * k + pn; st.zoom = ns
+                        st.zoomAt(z, c); st.pan = st.pan + pn
                     }
                 } else detectDragGestures(
                     onDragStart = { o ->
