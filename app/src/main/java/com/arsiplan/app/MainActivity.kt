@@ -316,11 +316,18 @@ fun PlanCanvas(st: PlanState, onText: (Offset) -> Unit, modifier: Modifier) {
     }
 
     fun finish() {
-        draft?.let { d ->
+        val d = draft
+        if (d != null) {
             if (d.kind == Kind.WALL && st.chain) {
                 val first = st.chainPt == null
-                if (st.commit(d)) { if (first) st.chainFirst = d.a; st.chainPt = d.b }
-            } else st.commit(d)
+                val ok = st.commit(d)
+                if (ok) {
+                    if (first) st.chainFirst = d.a
+                    st.chainPt = d.b
+                }
+            } else {
+                st.commit(d)
+            }
         }
         draft = null; mode = 0
     }
