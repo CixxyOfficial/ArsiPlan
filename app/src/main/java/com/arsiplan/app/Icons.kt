@@ -49,11 +49,19 @@ object Ic {
     val Plus = svg("plus", "M12 5v14M5 12h14")
     val RotL = svg("rotl", "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8M3 3v5h5")
     val RotR = svg("rotr", "M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8M21 3v5h-5")
+    val LineT = svg("linet", "M4 20L20 4")
+    val RectT = svg("rectt", "M4 6h16v12H4z")
+    val CircleT = svg("circlet", "M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0")
+    val MoveT = svg("movet", "M13 3h8v8M21 3l-9 9M11 5H4v15h15v-7")
+    val EraseT = svg("erase", "M3 14l9-9 7 7-9 9H6zM9 20h11")
+    val OffsetT = svg("offset", "M3 6h18M3 11h18M12 15v6M9 18l3 3 3-3")
     val Link = svg("link", "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71")
 }
 
 fun Tool.icon(): ImageVector = when (this) {
-    Tool.PAN -> Ic.Pan; Tool.SELECT -> Ic.Select; Tool.WALL -> Ic.Wall; Tool.DOOR -> Ic.Door
-    Tool.WINDOW -> Ic.Window; Tool.ROOM -> Ic.Room; Tool.FURN -> Ic.Furn; Tool.DIM -> Ic.Dim
-    Tool.TEXT -> Ic.Text
+    Tool.SELECT -> Ic.Select; Tool.PAN -> Ic.Pan; Tool.LINE -> Ic.LineT; Tool.WALL -> Ic.Wall
+    Tool.RECT -> Ic.RectT; Tool.CIRCLE -> Ic.CircleT; Tool.DOOR -> Ic.Door; Tool.WINDOW -> Ic.Window
+    Tool.ROOM -> Ic.Room; Tool.FURN -> Ic.Furn; Tool.DIM -> Ic.Dim; Tool.TEXT -> Ic.Text
+    Tool.MOVE -> Ic.MoveT; Tool.COPY -> Ic.Copy; Tool.ROTATE -> Ic.RotR; Tool.OFFSET -> Ic.OffsetT
+    Tool.ERASE -> Ic.EraseT
 }
